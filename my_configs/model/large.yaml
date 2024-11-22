@@ -1,0 +1,16 @@
+_target_: src.models.my_gigaPose.MyGigaPose
+model_name: large
+log_interval: 1000
+
+defaults:
+  - ae_net: dinov2_l
+  - ist_net: resnet
+  - refiner: rgb
+
+testing_metric:
+  _target_: src.models.matching.LocalSimilarity
+  k: 5
+  sim_threshold: 0.5
+  patch_threshold: 3
+
+checkpoint_path: gigaPose_datasets/pretrained/gigaPose_v1.ckpt

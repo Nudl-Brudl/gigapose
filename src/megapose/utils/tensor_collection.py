@@ -1,4 +1,7 @@
 """
+Module for handling tensor collections with metadata
+
+
 Copyright (c) 2022 Inria & NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,15 +29,22 @@ from src.megapose.utils.distributed import get_rank, get_world_size
 
 
 def concatenate(datas):
+    
+    # Filter out empty data 
     datas = [data for data in datas if len(data) > 0]
     if len(datas) == 0:
         return PandasTensorCollection(infos=pd.DataFrame())
     classes = [data.__class__ for data in datas]
+
+    # Check if all elems of collection have the same class
     assert all([class_n == classes[0] for class_n in classes])
 
+    # Combine infos DataFrames
     infos = pd.concat([data.infos for data in datas], axis=0, sort=False).reset_index(
         drop=True
     )
+
+    # Combine Tensors
     tensor_keys = datas[0].tensors.keys()
     tensors = dict()
     for k in tensor_keys:
@@ -43,7 +53,34 @@ def concatenate(datas):
 
 
 class TensorCollection:
+    '''
+    A collection of PyTorch tensors with convenient access and manipulation methods.
+
+    This class allows storing multiple tensors as attributes, providing easy access
+    and batch operations. It supports indexing, attribute-style access, and common
+    tensor operations like moving to different devices or changing data types.
+
+    Attributes:
+        _tensors (dict): A dictionary storing the tensors, with tensor names as keys.
+
+    Methods:
+        register_tensor(name, tensor): Add a new tensor to the collection.
+        delete_tensor(name): Remove a tensor from the collection.
+        to(torch_attr): Move all tensors to the specified device or change their dtype.
+        cuda(): Move all tensors to CUDA device.
+        cpu(): Move all tensors to CPU.
+        float(): Convert all tensors to float type.
+        double(): Convert all tensors to double type.
+        half(): Convert all tensors to half type.
+        clone(): Create a deep copy of the TensorCollection.
+
+    The class also supports indexing operations and attribute-style access to tensors.
+
+    '''
+
     def __init__(self, **kwargs):
+        ''' Register tensors from keyword arguments'''
+
         self.__dict__["_tensors"] = dict()
         for k, v in kwargs.items():
             self.register_tensor(k, v)
@@ -51,8 +88,10 @@ class TensorCollection:
     def register_tensor(self, name, tensor):
         self._tensors[name] = tensor
 
+
     def delete_tensor(self, name):
         del self._tensors[name]
+
 
     def __repr__(self):
         s = self.__class__.__name__ + "(\n"
@@ -60,8 +99,11 @@ class TensorCollection:
             s += f"    {k}: {t.shape} {t.dtype} {t.device},\n"
         s += ")"
         return s
+    
 
     def __getitem__(self, ids):
+        ''' Allows tensor collection indexing'''
+
         tensors = dict()
         for k, v in self._tensors.items():
             tensors[k] = getattr(self, k)[ids]
@@ -126,6 +168,28 @@ class TensorCollection:
 
 
 class PandasTensorCollection(TensorCollection):
+    '''
+    A collection of PyTorch tensors with associated pandas DataFrame for metadata.
+
+    This class extends TensorCollection by adding support for metadata stored in a
+    pandas DataFrame. It provides methods for merging with other DataFrames and
+    concatenating with other PandasTensorCollections.
+
+    Attributes:
+        infos (pandas.DataFrame): A DataFrame containing metadata associated with the tensors.
+        meta (dict): A dictionary for storing additional metadata.
+
+    Methods:
+        merge_df(df, *args, **kwargs): Merge the internal DataFrame with another DataFrame.
+        cat_df(df): Concatenate tensors from another PandasTensorCollection.
+        cat_df_and_infos(df): Concatenate both tensors and metadata from another PandasTensorCollection.
+        gather_distributed(tmp_dir=None): Gather data from multiple distributed processes.
+
+    The class inherits all methods from TensorCollection and overrides some to handle
+    the additional metadata. It also supports indexing that returns both tensor data
+    and corresponding metadata.
+    '''
+
     def __init__(self, infos, **tensors):
         super().__init__(**tensors)
         self.infos = infos.reset_index(drop=True)
@@ -136,6 +200,8 @@ class PandasTensorCollection(TensorCollection):
         super().register_buffer()
 
     def merge_df(self, df, *args, **kwargs):
+        '''Merges additional DataFrames with infos'''
+
         infos = self.infos.merge(df, how="left", *args, **kwargs)
         assert len(infos) == len(self.infos)
         assert (infos.index == self.infos.index).all()

@@ -1,4 +1,6 @@
 # Standard Library
+import os
+
 from pathlib import Path
 import hydra
 from omegaconf import DictConfig, OmegaConf
@@ -21,6 +23,13 @@ assign_gpu()
 def run_refiner(cfg: DictConfig):
     OmegaConf.set_struct(cfg, False)
 
+    root_dir = os.path.dirname(os.path.abspath(__file__))
+    cfg.save_dir = os.path.join(root_dir, 'gigaPose_datasets', 'results', 'large_None')
+    cfg.test_dataset_name = "hope"
+    cfg.use_multiple = True
+    cad_dir = os.path.join(root_dir, "gigaPose_datasets", "datasets", 
+                           cfg.test_dataset_name, "models")
+
     logger.info("Loading dataset ...")
     init_loc_path, model_name, run_id = find_init_pose_path(
         cfg.save_dir, cfg.test_dataset_name, cfg.use_multiple
@@ -40,8 +49,8 @@ def run_refiner(cfg: DictConfig):
     logger.info(f"Prediction is from Model={model_name}, run_id={run_id} done!")
 
     # load cad models for refinement
-    root_dir = Path(cfg.data.test.dataloader.root_dir)
-    cad_dir = root_dir / cfg.test_dataset_name / "models"
+    # root_dir = Path(cfg.data.test.dataloader.root_dir)
+    # cad_dir = root_dir / cfg.test_dataset_name / "models"
     if cfg.test_dataset_name == "tless":
         cad_dir = str(cad_dir) + "_cad"
     object_dataset = BOPObjectDataset(

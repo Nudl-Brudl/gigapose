@@ -3,7 +3,18 @@ import torch
 
 
 class BoundingBox:
+
+    '''Handles representation and manipulation of bounding boxes'''
+
     def __init__(self, box, type="xyxy"):
+        '''
+        Parameters
+        __________
+        box
+        type
+            either 'xyxy' (top-left to bottom-right) 
+            or 'xywh' (top-left with width and height)
+        '''
         self.type = type
         if type == "xywh":
             self.xyxy_box = self.xywh_to_xyxy(box)
@@ -14,13 +25,19 @@ class BoundingBox:
         self.top_left = None
         self.convert_long()
 
+
     def convert_long(self):
+        '''Ensures bounding coordinates are integers'''
+
         if isinstance(self.xyxy_box, np.ndarray):
             self.xyxy_box = self.xyxy_box.astype(np.int32)
         else:
             self.xyxy_box = self.xyxy_box.long()
 
+
     def get_top_left(self):
+        '''Retrieves the top-left coordinates of the bounding box.'''
+
         if isinstance(self.xyxy_box, np.ndarray):
             return self.xyxy_box[:2]
         elif isinstance(self.xyxy_box, torch.Tensor):
@@ -48,6 +65,7 @@ class BoundingBox:
             else:
                 raise ValueError("xyxy_box must be a numpy array or torch tensor")
         return self.box_center
+    
 
     def get_box_size(self):
         if self.box_size is None:
@@ -68,8 +86,11 @@ class BoundingBox:
             else:
                 raise ValueError("xyxy_box must be a numpy array or torch tensor")
         return self.box_size
+    
 
     def make_box_dividable(self, dividable_size, ceil=True):
+        '''Adjusts the bb size to be divisible by dividable_size'''
+
         box_size = self.get_box_size()
         if isinstance(self.xyxy_box, np.ndarray):
             if ceil:
@@ -92,6 +113,7 @@ class BoundingBox:
             new_box = self.xyxy_box.clone()
             new_box[:, 2:] = new_box[:, :2] + new_size
         return BoundingBox(new_box)
+    
 
     def xyxy_to_xywh(self):
         if len(self.xyxy_box.shape) == 1:
@@ -133,8 +155,11 @@ class BoundingBox:
                 raise ValueError("box must be a numpy array or torch tensor")
         else:
             raise ValueError("bbox must be a numpy array of shape (4,) or (N, 4)")
+        
 
     def is_valid(self, image_size, min_box_size=None):
+        '''Check if bb is larger than minimum size and smaller than image'''
+
         if isinstance(self.xyxy_box, np.ndarray):
             is_inside = True
             if self.xyxy_box[0] < 0 or self.xyxy_box[1] < 0:
@@ -218,7 +243,7 @@ class BoundingBox:
 
 
 def compute_iou_box(input_boxes, gt_boxes):
-    """Compute IoU between N boxes and K boxes.
+    """Compute Intersection over Union between N boxes and K boxes.
     Args:
         input_boxes: (N, 4) [x1, y1, x2, y2]
         gt_boxes: (K, 4) [x1, y1, x2, y2]

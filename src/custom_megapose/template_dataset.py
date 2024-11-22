@@ -64,8 +64,15 @@ class TemplateData:
         return sampled_idx_negatives
 
     def load_template(self, view_id, inplane=None):
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+        root_dir = os.path.abspath(os.path.join(file_dir, "..", ".."))
+
         image_path = f"{self.template_dir}/{view_id:06d}.png"
         depth_path = f"{self.template_dir}/{view_id:06d}_depth.png"
+
+        image_path = os.path.join(root_dir, image_path)
+        depth_path = os.path.join(root_dir, depth_path)
+
         assert os.path.exists(image_path), f"{image_path} does not exist"
         # assert os.path.exists(depth_path), f"{depth_path} does not exist"
         if not os.path.exists(depth_path):
@@ -127,7 +134,12 @@ class TemplateData:
         return data
 
     def load_pose(self, view_ids=None, inplanes=[0]):
-        poses = np.load(self.pose_path)
+
+        file_dir = os.path.dirname(os.path.abspath(__file__))
+        root_dir = os.path.abspath(os.path.join(file_dir, "..", ".."))
+        
+        poses = np.load(os.path.join(root_dir, self.pose_path))
+        
         if view_ids is None:  # all poses for testing mode
             poses = [Transform(poses[i]) * self.TWO_init for i in range(len(poses))]
             return torch.stack([pose.toTensor() for pose in poses])
@@ -185,6 +197,15 @@ class TemplateData:
 
 @dataclass
 class TemplateDataset:
+    '''
+    Encapsules a dataset of templates
+
+    Attributes:
+        list_object_templates (List[TemplateData]): has the list of object templates
+        label_to_objects (dict): has the form {'1': TemplateData(...)}
+        K (np.ndarray): Calibration matrix???
+    '''
+
     def __init__(
         self,
         object_templates: List[TemplateData],
@@ -226,6 +247,16 @@ class TemplateDataset:
         model_infos: DataJsonType,
         config: DataJsonType,
     ) -> "TemplateDataset":
+        '''
+        Returns a TemplateDataset from configuration
+
+        Args:
+            model_infos (DataJsonType): List of dictionaries of wanted objects {'obj_id': 1}
+            config (omegaconf.dictconfig.DictConfig): has config info of templates
+        
+        Returns:
+            TemplateDataset (TemplateDataset)
+        '''
         template_datas = []
         for model_info in tqdm(model_infos):
             obj_id = model_info["obj_id"]

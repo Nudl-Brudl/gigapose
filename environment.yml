@@ -12,10 +12,10 @@ dependencies:
     - torch
     - torchvision
     - omegaconf
-    - torchmetrics==0.10.3
+    - torchmetrics
     - fvcore
     - iopath
-    - xformers==0.0.18
+    - xformers
     - opencv-python 
     - pycocotools 
     - matplotlib 
@@ -26,7 +26,7 @@ dependencies:
     - hydra-colorlog
     - hydra-core
     - gdown
-    - pytorch-lightning==1.8.1
+    - pytorch-lightning
     - pandas
     - ruamel.yaml
     - pyrender

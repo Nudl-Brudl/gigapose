@@ -69,6 +69,12 @@ class InplaneLoss(nn.Module):
 
 
 class InfoNCE(nn.Module):
+    """
+    Implementation of the InfoNCE (Information Noise-Contrastive Estimation) loss.
+
+    Attributes:
+        tau (float): Temperature parameter for scaling the similarity scores.
+    """
     def __init__(self, tau=0.1):
         super(InfoNCE, self).__init__()
         self.tau = tau

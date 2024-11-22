@@ -14,6 +14,17 @@ logger = get_logger(__name__)
 
 @dataclass
 class KeypointInput:
+    '''
+    Class for Keypoints
+    
+    Attributes:
+        K (np.ndarray): calibration matrix
+        full_depth (np.ndarray): depth information
+        M (??): ???
+        mask (np.ndarray): mask of object
+        rgb (np.ndarray): ???
+        full_rgb (np.ndarray): ???    
+    '''
     def __init__(self, K, full_depth, mask, M, full_rgb=None, rgb=None):
         self.K = K
         self.full_depth = full_depth

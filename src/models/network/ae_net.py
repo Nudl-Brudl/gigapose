@@ -16,6 +16,16 @@ descriptor_sizes = {
 
 
 class AENet(pl.LightningModule):
+    """
+    AutoEncoder Network based on DINOv2 models.
+
+    Attributes:
+        model_name (str): Name of the DINOv2 model.
+        dinov2_model: The DINOv2 model instance.
+        descriptor_size (int): Size of the descriptor.
+        max_batch_size (int): Maximum batch size for processing.
+        patch_size (int): Size of the image patches.
+    """
     def __init__(
         self,
         model_name,
@@ -25,6 +35,18 @@ class AENet(pl.LightningModule):
         patch_size=14,
         **kwargs,
     ):
+        '''
+        Init AENet
+        
+        Args:
+            model_name (str): Name of the DINOv2 model to use.
+            dinov2_model: The DINOv2 model instance.
+            descriptor_size (int): Size of the descriptor.
+            max_batch_size (int): Maximum batch size for processing.
+            patch_size (int): Size of the image patches. Default is 14.
+            **kwargs: Additional keyword arguments.
+        '''
+
         super().__init__()
         self.model_name = model_name
         self.dinov2_model = dinov2_model
@@ -39,20 +61,59 @@ class AENet(pl.LightningModule):
         self.dinov2_model = self.dinov2_model.to(device)
 
     def get_toUpdate_parameters(self):
+        """
+        Get the parameters of the DINOv2 model that should be updated during training.
+
+        Returns:
+            iterator: An iterator over the model parameters.
+        """
+
         return self.dinov2_model.parameters()
 
     def compute_features(self, images):
+        """
+        Compute features using the DINOv2 model.
+
+        Args:
+            images (torch.Tensor): Input images.
+
+        Returns:
+            dict: A dictionary containing the computed features.
+        """
+
         # with torch.no_grad():  # no gradients
         features = self.dinov2_model.forward_features(images)
         return features
 
     def reshape_local_features(self, local_features, num_patches):
+        """
+        Reshape local features into a 2D spatial arrangement.
+
+        Args:
+            local_features (torch.Tensor): Local features to reshape.
+            num_patches (list): Number of patches in height and width.
+
+        Returns:
+            torch.Tensor: Reshaped local features.
+        """
+
         local_features = rearrange(
             local_features, "b (h w) c -> b c h w", h=num_patches[0], w=num_patches[1]
         )
         return local_features
 
     def forward_by_chunk(self, processed_rgbs, patch_dim=[2, 3]):
+        """
+        Process input images in chunks to compute features.
+
+        Args:
+            processed_rgbs (torch.Tensor): Processed RGB images.
+            patch_dim (list): Dimensions for patch extraction. Default is [2, 3].
+
+        Returns:
+            torch.Tensor: Normalized patch features.
+        """
+        
         batch_rgbs = BatchedData(batch_size=self.max_batch_size, data=processed_rgbs)
         patch_features = BatchedData(batch_size=self.max_batch_size)
 

@@ -10,6 +10,26 @@ logger = get_logger(__name__)
 
 
 class ObjectPoseRecovery(torch.nn.Module):
+    """
+    A module for recovering 6D object poses from 2D predictions.
+
+    This class implements a method to estimate the 3D position and orientation
+    of objects based on 2D image information and template data. It uses RANSAC
+    for robust estimation in the presence of noise or outliers.
+
+    Attributes:
+        template_K (torch.Tensor): Intrinsic camera matrix for template views.
+        template_Ms (torch.Tensor): Affine transformations for template views.
+        template_poses (torch.Tensor): 6D poses for template views.
+        ransac (RANSAC): RANSAC algorithm instance for robust estimation.
+
+    Args:
+        template_K (torch.Tensor): Intrinsic camera matrix for template views.
+        template_Ms (torch.Tensor): Affine transformations for template views.
+        template_poses (torch.Tensor): 6D poses for template views.
+        pixel_threshold (float): Threshold for RANSAC inlier detection.
+    """
+
     def __init__(
         self,
         template_K,

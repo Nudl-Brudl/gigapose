@@ -24,6 +24,7 @@ def call_render(
     num_gpus,
     use_blenderProc,
 ):
+    # Output dir management: If output dirs exist, erase else create
     output_dir = list_output_dir[idx_obj]
     cad_path = list_cad_path[idx_obj]
     if os.path.exists(output_dir):
@@ -31,18 +32,21 @@ def call_render(
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
+    # Choose which renderer to use and set up command
     gpus_device = idx_obj % num_gpus
     os.makedirs(output_dir, exist_ok=True)
     if use_blenderProc:  # TODO: remove blenderProc
         command = f"blenderproc run ./src/lib3d/blenderproc.py {cad_path} {obj_pose_path} {output_dir} {gpus_device}"
     else:  # TODO: understand why this is not working for tless and itodd
-        command = f"python -m src.custom_megapose.call_panda3d {cad_path} {obj_pose_path} {output_dir} {gpus_device}"
+        command = f"python3 -m src.custom_megapose.call_panda3d {cad_path} {obj_pose_path} {output_dir} {gpus_device}"
 
     if disable_output:
         command += " true"
     else:
         command += " false"
     command += " true"  # scale translation to meter
+
+    # Execute command
     os.system(command)
 
     # make sure the number of rendered images is correct
@@ -96,6 +100,7 @@ def render(cfg) -> None:
 
         cad_paths = cad_dir.glob("*.ply")
         cad_paths = list(cad_paths)
+        
         logger.info(f"Found {len(list(cad_paths))} objects")
 
         output_dirs = []
@@ -112,6 +117,7 @@ def render(cfg) -> None:
         pool = multiprocessing.Pool(processes=int(cfg.machine.num_workers))
 
         logger.info("Start rendering for {} objects".format(len(cad_paths)))
+        
         start_time = time.time()
         pool = multiprocessing.Pool(processes=cfg.machine.num_workers)
         call_render_ = partial(
@@ -133,6 +139,7 @@ def render(cfg) -> None:
         logger.info(f"Finished for {len(correct_values)}/{len(cad_paths)} objects")
         finish_time = time.time()
         logger.info(f"Total time {len(cad_paths)}: {finish_time - start_time}")
+        
 
 
 if __name__ == "__main__":

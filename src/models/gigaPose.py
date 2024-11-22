@@ -32,18 +32,63 @@ logger = get_logger(__name__)
 
 
 class GigaPose(pl.LightningModule):
+    '''
+    Defines GigaPose neural network
+
+    Attributes:
+        model_name (str): name of the model (default is 'large')
+        ae_net (AENeT): ViT for scene and template images
+        ist_net (ISTNet): Feature extractor for 2d scale and inplane rotation
+        training_loss (DictConfig): Loss functions for training.
+        testing_metric (LocalSimilarity): Metric for similarity computation during testing.
+        max_num_dets_per_forward (int): number of ???
+        test_setting (str): "localiuation" or something else
+        log_interval (int): how often log is saved in log dir
+        log_dir (str): directory where logs are stored
+        optim_config (dict): dictionary for setting optimizer hyperparameters
+        optim_name (str): name of optimizer
+        template_datas (tc.PandasTensorCollection): Preprocessed template data for different datasets.
+        pose_recovery (dict): Object pose recovery modules for different datasets.
+        lr (float): learning rate
+        l2_loss (nn.MSELoss): l2 loss function
+        timer (Timer): timer
+        run_id (int): id of the run
+        template_datasets (dict): {'hope': <src.dataloader.template.TemplateSet object at 0x76df8bd83550>}
+        test_dataset_name (str): name of the template dataset
+
+
+    
+    Methods:
+        __init__()
+        warm_up_lr()
+        configure_optimizers()
+        move_to_device()
+        compute_contrastive_loss()
+        compute_regression_loss()
+        training_step()
+        validate_contrast_loss()
+        validation_step()
+        set_template_data()
+        filter_and_save()
+        vis_retrieval()
+        eval_retrieval()
+        test_step()
+        on_test_epoch_end()
+
+    '''
+
     def __init__(
         self,
-        model_name,
-        ae_net,
-        ist_net,
-        training_loss,
-        testing_metric,
-        optim_config,
-        log_interval,
-        log_dir,
+        model_name, # str: 'large'
+        ae_net, # src.mdoels.network.ae_net.AENet
+        ist_net, # src.mdoels.network.ae_net.ISTNet
+        training_loss,  # Dict {'contrast_loss': xx, 'scale_loss': xx, 'inplane_loss': xx}
+        testing_metric, #: src.models.matching.LocalSimilarity
+        optim_config, # {'loss_type': str, 'ae_lr': float, 'ist_lr': float, 'weight_decay': float, 'warm_up_steps': int, 'use_gt_masks': bool, 'nets_to_train': 'str'}
+        log_interval, # int
+        log_dir, # str
         max_num_dets_per_forward=None,
-        test_setting="localization",
+        test_setting="localization", # str
         **kwargs,
     ):
         # define the network
@@ -77,13 +122,22 @@ class GigaPose(pl.LightningModule):
         logger.info("Initialize GigaPose done!")
 
     def warm_up_lr(self):
+        '''
+        Gradually increases learning rate to target value
+        '''
+
+        # Go through optimizers of the trainer
         for optim in self.trainer.optimizers:
+            # Go through all parameter groups of each optimiizer
             for idx_group, pg in enumerate(optim.param_groups):
+                # For multiple parameter groups of the optimizer
                 if len(optim.param_groups) > 1:
+                    # Differentiate between group with idx=0 and rest
                     lr = self.lr["ae"] if idx_group == 0 else self.lr["ist"]
                     pg["lr"] = (
                         self.global_step / float(self.optim_config.warm_up_steps) * lr
                     )
+                # For single parameter group of optimizer
                 else:
                     pg["lr"] = (
                         self.global_step
@@ -355,38 +409,63 @@ class GigaPose(pl.LightningModule):
         _ = self.validate_contrast_loss(batch, idx_batch, "val")
 
     def set_template_data(self, dataset_name):
+        '''
+        Process template data for retrieval during inference
+        '''
+
+
         logger.info("Initializing template data ...")
         self.timer.tic()
+
+        # Retrieve specified dataset
         template_dataset = self.template_datasets[dataset_name]
+        template_labels = template_dataset.model_infos
+
+        # Define a list of data types to process
         names = ["rgb", "mask", "K", "M", "poses", "ae_features", "ist_features"]
+        
+        # Initialize an empty BatchedData object for each data type
         template_data = {name: BatchedData(None) for name in names}
 
+        # Iterate through each item in template dataset
+        # In hope there are 28 items
         for idx in tqdm(range(len(template_dataset))):
+            idx_dataset = template_labels[idx]["obj_id"] - 1
             for name in names:
                 if name in ["ae_features", "ist_features"]:
                     continue
                 if name == "rgb":
-                    templates = template_dataset[idx].rgb.to(self.device)
+                    templates = template_dataset[idx_dataset].rgb.to(self.device)
+
+                    # Stores rgb data if not low memory mode
                     if self.max_num_dets_per_forward is None:
                         template_data[name].append(templates)
 
+                    # Compute ae & ist features of rgb image
                     ae_features = self.ae_net(templates)
                     template_data["ae_features"].append(ae_features)
 
                     ist_features = self.ist_net.forward_by_chunk(templates)
                     template_data["ist_features"].append(ist_features)
+                
+                # Other data is simply appended
                 else:
-                    tmp = getattr(template_dataset[idx], name)
+                    tmp = getattr(template_dataset[idx_dataset], name)
                     template_data[name].append(tmp.to(self.device))
         if self.max_num_dets_per_forward is not None:
             names.remove("rgb")
+
+        # Stack data into single tensor (this where it crashes)
         for name in names:
             template_data[name].stack()
             template_data[name] = template_data[name].data
 
+        # Stores everything in PandasTensorCollection
         self.template_datas[dataset_name] = tc.PandasTensorCollection(
             infos=pd.DataFrame(), **template_data
         )
+
+        # Set up ObjectPoseRecovery
         self.pose_recovery[dataset_name] = ObjectPoseRecovery(
             template_K=template_data["K"],
             template_Ms=template_data["M"],
@@ -480,7 +559,7 @@ class GigaPose(pl.LightningModule):
 
     def eval_retrieval(
         self,
-        batch,
+        batch, # pandas tensor collection
         idx_batch,
         dataset_name,
         sort_pred_by_inliers=True,
@@ -497,7 +576,7 @@ class GigaPose(pl.LightningModule):
         B, C, H, W = batch.tar_img.shape
         device = batch.tar_img.device
 
-        # if low_memory_mode, two detections are forward at a time
+        # if low_memory_mode, two detections are forwarded at a time
         list_idx_sample = []
         if self.max_num_dets_per_forward is not None:
             for start_idx in np.arange(0, B, self.max_num_dets_per_forward):
@@ -508,7 +587,9 @@ class GigaPose(pl.LightningModule):
             idx_sample = torch.arange(0, B, device=device)
             list_idx_sample.append(idx_sample)
 
+    ################ BIIIIIIIIIIIIIIIIIIIIIIIIG PROBLEMS #######################
         for idx_sub_batch, idx_sample in enumerate(list_idx_sample):
+            #print(f"THIS IS idx_sub_batch {idx_sub_batch} and idx_sample {idx_sample}")
             # compute target features
             tar_ae_features = self.ae_net(batch.tar_img[idx_sample])
             tar_label_np = np.asarray(
@@ -516,10 +597,12 @@ class GigaPose(pl.LightningModule):
             ).astype(np.int32)
             tar_label = torch.from_numpy(tar_label_np).to(device)
 
-            # template data
+            # template data # !!!!!!!!! bei idx sub_batch = 4 ist da ein Problem
+            #src_ae_features = template_data.ae_features[tar_label - 1]
+            #src_masks = template_data.mask[tar_label - 1]
+            #template_data.ae_features = template_data.ae_features.squeeze()
             src_ae_features = template_data.ae_features[tar_label - 1]
             src_masks = template_data.mask[tar_label - 1]
-
             # Step 1: Nearest neighbor search
             self.timer.tic()
             predictions_ = self.testing_metric.test(
@@ -529,6 +612,7 @@ class GigaPose(pl.LightningModule):
                 tar_mask=batch.tar_mask[idx_sample],
                 max_batch_size=None,
             )
+            #print("...")
             predictions_.infos = batch.infos
             if idx_sub_batch == 0:
                 predictions = predictions_
@@ -651,3 +735,105 @@ class GigaPose(pl.LightningModule):
                 run_id=self.run_id,
                 is_refined=False,
             )
+
+    def forward(self, batch):
+        torch.cuda.empty_cache()
+        dataset_name = self.test_dataset_name
+        sort_pred_by_inliers = True
+
+        if dataset_name not in self.template_datas:
+            self.set_template_data(dataset_name)
+
+        template_data = self.template_datas[dataset_name]
+        pose_recovery = self.pose_recovery[dataset_name]
+        times = {"neighbor_search": None, "final_step": None}
+
+        B, C, H, W = batch["tar_img"].shape
+        device = batch["tar_img"].device
+
+        # Compute ae features of query and template
+        tar_ae_features = self.ae_net(batch["tar_img"])
+        src_ae_features = template_data.ae_features
+        src_masks = template_data.mask
+
+        # Nearest neighbour search
+        '''
+        PandasTensorCollection(
+            id_src: torch.Size([1, 5]) torch.int64 cuda:0,
+            score_src: torch.Size([1, 5]) torch.float32 cuda:0,
+            score_pts: torch.Size([1, 5, 256]) torch.float32 cuda:0,
+            tar_pts: torch.Size([1, 5, 256, 2]) torch.int64 cuda:0,
+            src_pts: torch.Size([1, 5, 256, 2]) torch.int64 cuda:0,
+            ----------------------------------------
+                infos:
+            Empty DataFrame
+            Columns: []
+            Index: []
+        )
+        '''
+        predictions = self.testing_metric.test(
+            src_feats=src_ae_features,
+            tar_feat=tar_ae_features,
+            src_masks=src_masks,
+            tar_mask=batch["tar_mask"],
+            max_batch_size=None
+        )
+               
+        # Find affine transforms
+        num_patches = predictions.src_pts.shape[2]
+        k = self.testing_metric.k
+        pred_scales = torch.zeros(B, k, num_patches, device=device)
+        pred_cosSin_inplanes = torch.zeros(B, k, num_patches, 2, device=device)
+
+        self.timer.tic()
+        for idx_k in range(k):
+            idx_sample = torch.arange(0, B, device=device)
+            idx_views = [idx_sample, predictions.id_src[:, idx_k]]
+
+            src_ist_features = template_data.ist_features
+            tar_ist_features = self.ist_net.forward_by_chunk(batch["tar_img"][idx_sample])
+
+            (
+                pred_scales[:, idx_k],
+                pred_cosSin_inplanes[:, idx_k]
+            ) = self.ist_net.inference(
+                src_feat=src_ist_features[idx_views],
+                tar_feat=tar_ist_features,
+                src_pts=predictions.src_pts[:, idx_k],
+                tar_pts=predictions.tar_pts[:, idx_k],
+            )
+        predictions.register_tensor("relScale", pred_scales)
+        predictions.register_tensor("relInplane", pred_cosSin_inplanes)
+        times["neighbor_search"] = self.timer.toc()
+        self.timer.reset()
+
+        self.timer.tic()
+        predictions = pose_recovery.forward_ransac(predictions=predictions)
+
+        # sort the predictions by the number of inliers for each detection
+        score = torch.sum(predictions.ransac_scores, dim=2) / num_patches
+        predictions.register_tensor("scores", score)
+        if sort_pred_by_inliers:
+            order = torch.argsort(score, dim=1, descending=True)
+            for k, v in predictions._tensors.items():
+                if k in ["infos", "meta"]:
+                    continue
+                predictions.register_tensor(k, v[idx_sample[:, None], order])
+
+        # calculate prediction
+        pred_poses = self.pose_recovery[dataset_name]._forward_recovery(
+            query_K=batch["tar_K"],
+            query_M=batch["tar_M"],
+            pred_view_ids=predictions.id_src,
+            pred_Ms=predictions.M.clone(),
+            template_K=self.pose_recovery[dataset_name].template_K.clone(),
+            template_Ms=self.pose_recovery[dataset_name].template_Ms.clone(),
+            template_poses=self.pose_recovery[dataset_name].template_poses.clone()
+        )
+        predictions.register_tensor("pred_poses", pred_poses)
+
+        times["final_step"] = self.timer.toc()
+        self.timer.reset()
+        total_time = sum(times.values())
+        return predictions
+

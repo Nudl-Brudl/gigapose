@@ -24,7 +24,30 @@ def conv3x3(in_planes, out_planes, stride=1):
 
 
 class BasicBlock(nn.Module):
+    """
+    A basic building block for ResNet architecture.
+
+    This class defines a basic building block for 
+    the ResNet architecture, containing two convolutional 
+    layers with batch normalization and ReLU activation.
+
+    Attributes:
+        conv1 (nn.Conv2d): First convolutional layer.
+        conv2 (nn.Conv2d): Second convolutional layer.
+        bn1 (nn.BatchNorm2d): First batch normalization layer.
+        bn2 (nn.BatchNorm2d): Second batch normalization layer.
+        relu (nn.ReLU): ReLU activation function.
+        downsample (nn.Sequential or None): Downsampling layer if stride > 1.
+    """
     def __init__(self, in_planes, planes, stride=1):
+        '''
+        Initialize BasicBlock
+
+        Args:
+            in_planes (int): Number of input channels.
+            planes (int): Number of output channels.
+            stride (int): Stride for the first convolution. Default is 1.
+        '''
         super().__init__()
         self.conv1 = conv3x3(in_planes, planes, stride)
         self.conv2 = conv3x3(planes, planes)
@@ -76,6 +99,10 @@ def init_(tensor):
 
 # feedforward
 class GEGLU(nn.Module):
+    '''
+    Implements the Gated Exponential Linear Unit activation
+    '''
+
     def __init__(self, dim_in, dim_out):
         super().__init__()
         self.proj = nn.Linear(dim_in, dim_out * 2)
@@ -86,6 +113,10 @@ class GEGLU(nn.Module):
 
 
 class FeedForward(nn.Module):
+    '''
+    Implements a Linear layer with GEGLU
+    '''
+
     def __init__(self, dim, dim_out=None, mult=4, glu=False, dropout=0.):
         super().__init__()
         inner_dim = int(dim * mult)
@@ -119,7 +150,27 @@ def Normalize(in_channels):
 
 
 class SpatialSelfAttention(nn.Module):
+    """
+    Spatial self-attention module.
+
+    This class implements a spatial self-attention 
+    mechanism using convolutions and softmax attention.
+
+    Attributes:
+        norm (nn.GroupNorm): Group normalization layer.
+        q (nn.Conv2d): Query convolution.
+        k (nn.Conv2d): Key convolution.
+        v (nn.Conv2d): Value convolution.
+        proj_out (nn.Conv2d): Output projection convolution.
+    """
+
     def __init__(self, in_channels):
+        '''
+        Initialiazes SpatialSelfAttention
+
+        Args:
+            in_channels (int): Number of input channels.
+        '''
         super().__init__()
         self.in_channels = in_channels
 
@@ -172,7 +223,33 @@ class SpatialSelfAttention(nn.Module):
 
 
 class CrossAttention(nn.Module):
+    """
+    Cross-attention module.
+
+    Attributes:
+        scale (float): Scaling factor for attention scores.
+        heads (int): Number of attention heads.
+        to_q (nn.Linear): Linear layer for query projection.
+        to_k (nn.Linear): Linear layer for key projection.
+        to_v (nn.Linear): Linear layer for value projection.
+        to_out (nn.Sequential): Output projection layers.
+    """
+
+
     def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.):
+        '''
+        Initializes CrossAttention
+
+        Args:
+            query_dim (int): Dimension of the query.
+            context_dim (int, optional): Dimension of the context. Defaults to None.
+            heads (int): Number of attention heads. Default is 8.
+            dim_head (int): Dimension of each attention head. Default is 64.
+            dropout (float): Dropout rate. Default is 0.
+
+    
+        '''
+        
         super().__init__()
         inner_dim = dim_head * heads
         context_dim = default(context_dim, query_dim)
@@ -224,6 +301,10 @@ class CrossAttention(nn.Module):
         return self.to_out(out)
 
 class BasicTransformerBlock(nn.Module):
+    '''
+    Combine self-attention, cross-attention and feedforward layers
+    '''
+
     ATTENTION_MODES = {
         "softmax": CrossAttention,  # vanilla attention
     }
@@ -253,17 +334,35 @@ class BasicTransformerBlock(nn.Module):
 
 class SpatialTransformer(nn.Module):
     """
-    Transformer block for image-like data.
-    First, project the input (aka embedding)
-    and reshape to b, t, d.
-    Then apply standard transformer action.
-    Finally, reshape to image
-    NEW: use_linear for more efficiency instead of the 1x1 convs
+    Spatial transformer module for image-like data.
+
+    Attributes:
+        in_channels (int): Number of input channels.
+        norm (Normalize): Normalization layer.
+        proj_in (nn.Conv2d or nn.Linear): Input projection layer.
+        transformer_blocks (nn.ModuleList): List of transformer blocks.
+        proj_out (nn.Conv2d or nn.Linear): Output projection layer.
+        use_linear (bool): Whether linear layers are used instead of convolutions.
     """
     def __init__(self, in_channels, n_heads, d_head,
                  depth=1, dropout=0., context_dim=None,
                  disable_self_attn=False, use_linear=False,
                  use_checkpoint=False):
+        '''
+        Init SpatialTransformer
+
+        Args:
+            in_channels (int): Number of input channels.
+            n_heads (int): Number of attention heads.
+            d_head (int): Dimension of each attention head.
+            depth (int): Number of transformer blocks. Default is 1.
+            dropout (float): Dropout rate. Default is 0.
+            context_dim (int or list, optional): Dimension(s) of the context. Default is None.
+            disable_self_attn (bool): Whether to disable self-attention. Default is False.
+            use_linear (bool): Whether to use linear layers instead of convolutions. Default is False.
+            use_checkpoint (bool): Whether to use checkpointing. Default is False.
+        '''
+
         super().__init__()
         if exists(context_dim) and not isinstance(context_dim, list):
             context_dim = [context_dim]
@@ -316,7 +415,28 @@ class SpatialTransformer(nn.Module):
         return x + x_in
 
 class ResNet(nn.Module):
+    """
+    ResNet model with optional attention mechanisms.
+
+    Attributes:
+        use_attention (bool): Whether to use attention mechanisms.
+        input_size (int): Input image size.
+        in_planes (int): Number of input planes for each layer.
+        conv1 (nn.Conv2d): Initial convolutional layer.
+        bn1 (nn.BatchNorm2d): Initial batch normalization layer.
+        relu (nn.ReLU): ReLU activation function.
+        layer1, layer2, layer3, layer4 (nn.Sequential): ResNet layers.
+        attention1, attention2 (SpatialTransformer): Optional attention modules.
+        layer4_outconv (nn.Conv2d): Output convolution layer.
+    """
     def __init__(self, config):
+        '''
+        Init ResNet
+
+        Args:
+            config (dict): Configuration dictionary containing model parameters.
+        '''
+        
         super().__init__()
         # Config
         block = BasicBlock

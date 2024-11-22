@@ -1,3 +1,7 @@
+'''
+Code to work with scene datasets stored in web-friendly format
+'''
+
 # adapted from https://github.com/megapose6d/megapose6d/blob/master/src/megapose/datasets/web_scene_dataset.py#L1
 import io
 import json
@@ -33,6 +37,27 @@ def load_scene_ds_obs(
     load_depth: bool = False,
     label_format: str = "{label}",
 ) -> SceneObservation:
+    '''
+    Loads single scene observation from a dictionary of data
+
+    Args:
+    sample (dict): keys:
+            __key__: str in form 'SCENEID_VIEWID'
+            __url__: path to shard-ID.tar file
+            camera.json: byte string of camera json file
+                b'{\n "cam_K": ..., "cam_R_w2c":}'
+            depth.png: byte string, read out as depth info
+            mask.json: byte string of mask json file
+            mask_visib.json:
+            rgb.png: byte string, read out as rgb image
+    depth_scale (int): indicate by which factor depth data has to be divided
+    load_depth (bool): Indicates if depth image provided
+    label_format (str): not really used
+
+    Returns:
+    SceneObservation
+    '''
+
     # load rgb
     depth_format = "depth.png"
     if "rgb.jpg" in sample:
@@ -77,6 +102,7 @@ def load_scene_ds_obs(
     scene_id, view_id = sample["__key__"].split("_")
     infos = ObservationInfos(scene_id=scene_id, view_id=view_id)
 
+    # If ground truth available
     if gt_available:
         objects_gt = json.loads(sample["gt.json"])
         objects_gt_info = json.loads(sample["gt_info.json"])
@@ -115,10 +141,22 @@ def load_scene_ds_obs(
 
 
 class WebSceneDataset(SceneDataset):
+    '''
+    Implements SceneDataset for webdatasets like HOPE
+
+    Attributes:
+        frame_index (pd.DataFrame): Must contain the following columns: scene_id, view_id
+        load_depth (bool, optional): Whether to load depth images. Defaults to False.
+        load_segmentation (bool, optional): Whether to load image segmentation.
+        depth_scale (float):
+        label_format (str): indicates how labels are passed
+        wds_dir (Path): path to the directory of the dataset
+    '''
+
     def __init__(
         self,
-        wds_dir: Path,
-        depth_scale: float = 1000.0,
+        wds_dir: Path, #'gigaPose_datasets/datasets/hope/test'
+        depth_scale: float = 1000.0, # 10
         load_depth: bool = True,
         load_segmentation: bool = True,
         label_format: str = "{label}",
@@ -137,17 +175,41 @@ class WebSceneDataset(SceneDataset):
         )
 
     def load_frame_index(self) -> pd.DataFrame:
+        '''
+        Load the key_to_shard information
+
+        Returns:
+            frame_index (pd.DataFrame):
+                frame that looks like this
+                    key         shard_fname
+                _______________________________
+                   img_1       shard_1.tar
+                   img_2       shard_2.tar
+                   img_3       shard_3.tar
+        '''
+
+        # Determine the directory to shard shard json file
         if "test" in self.wds_dir.name:
             root_dir = self.wds_dir
         else:
             root_dir = self.wds_dir.parent
         key_to_shard = inout.load_json(root_dir / "key_to_shard.json")
+
+        # Create lists of image keys and shard filenames
         keys, shard_fnames = [], []
         for key, shard_fname in key_to_shard.items():
             keys.append(key)
             shard_fnames.append(shard_fname)
+        
+        # Create pd.DataFrame table, that looks like this
+        #       key         shard_fname
+        #   _______________________________
+        #      img_1       shard_1.tar
+        #      img_2       shard_2.tar
+        #      img_3       shard_3.tar
         frame_index = pd.DataFrame({"key": keys, "shard_fname": shard_fnames})
         return frame_index
+    
 
     def get_tar_list(self) -> List[str]:
         # broken shards of MegaPose-GSO and MegaPose-ShapeNet
@@ -186,9 +248,18 @@ class WebSceneDataset(SceneDataset):
 
 
 class IterableWebSceneDataset(IterableSceneDataset):
+    '''
+    An iterable dataset fo WebSceneDataset
+
+    Attributes:
+        web_scene_dataset (WebSceneDataset): 
+        datapipeline (wds.DataPipeline):
+    '''
+
     def __init__(
         self, web_scene_dataset: WebSceneDataset, set_length: Optional[int] = True
     ):
+        
         self.web_scene_dataset = web_scene_dataset
 
         load_scene_ds_obs_ = partial(
@@ -198,9 +269,8 @@ class IterableWebSceneDataset(IterableSceneDataset):
             label_format=self.web_scene_dataset.label_format,
         )
 
-        def load_scene_ds_obs_iterator(
-            samples: Iterator[SceneObservation],
-        ) -> Iterator[SceneObservation]:
+        def load_scene_ds_obs_iterator(samples: Iterator[SceneObservation],
+                                       ) -> Iterator[SceneObservation]:
             for sample in samples:
                 yield load_scene_ds_obs_(sample)
 

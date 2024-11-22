@@ -7,6 +7,28 @@ logger = get_logger(__name__)
 
 
 class RANSAC(torch.nn.Module):
+    """
+    Implements the RANSAC algorithm for robust estimation of 2D affine transformations.
+
+    This class uses RANSAC to find the best affine transformation between two sets of
+    corresponding points, even in the presence of outliers. It's designed to work
+    efficiently with batches of point sets.
+
+    Attributes:
+        patch_size (int): Size of image patches, used to scale point coordinates.
+        pixel_threshold (float): Maximum allowed error (in pixels) for inliers.
+
+    Args:
+        pixel_threshold (float): Threshold for considering a point as an inlier.
+        patch_size (int, optional): Size of image patches. Defaults to 14.
+
+    Methods:
+        forward(batch, scores=None, direction="src2tar"): 
+            Applies RANSAC to a batch of point correspondences.
+        forward_(src_pts, tar_pts, score, relScale, relInplane): 
+            Core RANSAC algorithm for a single set of correspondences.
+    """
+    
     def __init__(
         self,
         pixel_threshold,
@@ -43,13 +65,20 @@ class RANSAC(torch.nn.Module):
         relInplane,
     ):
         """
-        Finding the mapping from src_pts to tar_pts using RANSAC
-        src_pts: (N, 2)
-        tar_pts: (N, 2)
-        score: (N, )
-        relScale: (N, )
-        relInplane: (N, 2) # cos, sin
+        Core RANSAC algorithm for a single set of correspondences.
+
+        Args:
+            src_pts (torch.Tensor): Source points.
+            tar_pts (torch.Tensor): Target points.
+            score (torch.Tensor): Confidence scores for each correspondence.
+            relScale (torch.Tensor): Relative scales.
+            relInplane (torch.Tensor): In-plane rotations.
+
+        Returns:
+            dict: Contains the best affine transformation (M), 
+                  whether the estimation failed, and indices of inlier points.
         """
+        
         N_total = src_pts.shape[0]
         device = src_pts.device
 
@@ -106,6 +135,23 @@ class RANSAC(torch.nn.Module):
         return dict(M=M_candidates[idx_best], failed=failed, index_inlier=index_inlier)
 
     def forward(self, batch, scores=None, direction="src2tar"):
+        """
+        Applies RANSAC to a batch of point correspondences.
+
+        Args:
+            batch (PandasTensorCollection): Contains source and target points, 
+                relative scales, and in-plane rotations.
+            scores (torch.Tensor, optional): Confidence scores for each correspondence.
+            direction (str, optional): Direction of transformation. 
+                Either "src2tar" or "tar2src". Defaults to "src2tar".
+
+        Returns:
+            tuple: 
+                - Ms (torch.Tensor): Estimated affine transformations.
+                - idx_failed (torch.Tensor): Boolean tensor indicating failed estimations.
+                - out_data (PandasTensorCollection): Inlier points and their scores.
+        """
+
         if direction == "src2tar":
             src_pts = batch.src_pts
             tar_pts = batch.tar_pts

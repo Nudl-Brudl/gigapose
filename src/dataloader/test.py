@@ -1,3 +1,9 @@
+'''
+Defines a dataset for testing the model
+
+Dataset is implemented as a class
+'''
+
 from __future__ import annotations
 
 # Standard Library
@@ -50,10 +56,10 @@ class GigaPoseTestSet(GigaPoseTrainSet):
         batch_size,
         root_dir,
         dataset_name,
-        depth_scale,
-        template_config,
+        depth_scale, # default test.py: 10
+        template_config, # dict: {'dir': './gigaPose_datasets/datasets/templates/', 'level_templates': 1, 'pose_distribution': 'all', 'scale_factor': 1.0, 'num_templates': 162, 'image_name': 'OBJECT_ID/VIEW_ID.png', 'pose_name': 'object_poses/OBJECT_ID.npy'}
         transforms,
-        test_setting,
+        test_setting, # default test.py: detection
         load_gt=True,
         init_loc_path=None,  # for refinement
     ):
@@ -72,10 +78,13 @@ class GigaPoseTestSet(GigaPoseTrainSet):
         web_dataset = WebSceneDataset(webdataset_dir / split, depth_scale=depth_scale)
         self.web_dataloader = IterableWebSceneDataset(web_dataset, set_length=True)
 
-        # load the template dataset
+        # Is a json file with dictionary of models, where each entry looks like
+        # "2": {"diameter": 153.86734989834588, "min_x": -21.7396, "min_y": -32.3161, "min_z": -74.1645, "size_x": 43.4792, "size_y": 64.6322, "size_z": 148.329},
         model_infos = inout.load_json(
             self.root_dir / self.dataset_name / model_name / "models_info.json"
         )
+
+        # Store the object indices of json file in a dictionary
         model_infos = [{"obj_id": int(obj_id)} for obj_id in model_infos.keys()]
 
         template_config.dir += f"/{dataset_name}"

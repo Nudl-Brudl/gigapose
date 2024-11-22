@@ -1,3 +1,5 @@
+''' Defines class to match pathes in src & target imgs'''
+
 import pandas as pd
 import torch
 import torch.nn.functional as F
@@ -7,6 +9,31 @@ from src.utils.batch import BatchedData
 
 
 class LocalSimilarity(torch.nn.Module):
+    '''
+    Finds consistent matching patches between source and target images.
+
+    This class implements a method to identify similar patches in source and target
+    images based on feature similarity and spatial consistency.
+
+    Attributes:
+        max_batch_size (int): Maximum batch size for processing.
+        k (int): Number of top matches to return.
+        sim_threshold (float): Similarity threshold for matching patches.
+        patch_threshold (float): Threshold for patch consistency.
+        search_direction (str): Direction of search ('tar2src' or 'src2tar').
+        num_patches (int): Number of patches in each dimension of the image.
+        idx_gt (torch.Tensor): Ground truth indices for patches.
+
+    Args:
+        k (int): Number of top matches to return.
+        sim_threshold (float): Similarity threshold for matching patches.
+        patch_threshold (float): Threshold for patch consistency.
+        search_direction (str, optional): Direction of search. Defaults to "tar2src".
+        image_size (int, optional): Size of the input image. Defaults to 224.
+        patch_size (int, optional): Size of each patch. Defaults to 14.
+        max_batch_size (int, optional): Maximum batch size for processing. Defaults to 32.
+    '''
+
     def __init__(
         self,
         k,
@@ -28,8 +55,17 @@ class LocalSimilarity(torch.nn.Module):
 
     def format_prediction(self, src_mask, input_tar_pts):
         """
-        Formatting predictions by assign -1 to outside of src_mask and convert to (B, N, (H W), 2) format
+        Formats predictions by assigning -1 to areas outside of src_mask and converting to (B, N, (H W), 2) format.
+
+        Args:
+            src_mask (torch.Tensor): Source mask tensor.
+            input_tar_pts (torch.Tensor): Input target points tensor.
+
+        Returns:
+            tuple: Formatted source and target points tensors.        
         """
+
+
         if len(src_mask.shape) == 3:
             src_mask = src_mask.unsqueeze(1)
             input_tar_pts = input_tar_pts.unsqueeze(1)
@@ -61,14 +97,32 @@ class LocalSimilarity(torch.nn.Module):
         return src_pts, tar_pts
 
     def convert_index2location(self, index):
-        """Convert from (H*W) index to (H, W) location"""
+        """
+        Converts from (H*W) index to (H, W) location.
+
+        Args:
+            index (torch.Tensor): Input index tensor.
+
+        Returns:
+            torch.Tensor: Converted location tensor.
+        """
+
         h = index // self.num_patches
         w = index % self.num_patches
         patch_location = torch.stack([w, h], dim=-1)
         return patch_location.float()
 
     def convert_location2index(self, location):
-        """Convert from (H, W) location to (H*W) index"""
+        """
+        Converts from (H, W) location to (H*W) index.
+
+        Args:
+            location (torch.Tensor): Input location tensor.
+
+        Returns:
+            torch.Tensor: Converted index tensor.
+        """
+
         if len(location.shape) == 2:
             index = location[:, 1] * self.num_patches + location[:, 0]
         elif len(location.shape) == 3:
@@ -78,7 +132,17 @@ class LocalSimilarity(torch.nn.Module):
         return index.long()
 
     def find_consistency_patches(self, sim_src2tar, idx_src2tar, idx_tar2src):
-        """Find the consistency patches between source and target image nearest neighbor search"""
+        """
+        Finds the consistency patches between source and target image using nearest neighbor search.
+
+        Args:
+            sim_src2tar (torch.Tensor): Similarity scores from source to target.
+            idx_src2tar (torch.Tensor): Indices of matches from source to target.
+            idx_tar2src (torch.Tensor): Indices of matches from target to source.
+
+        Returns:
+            torch.Tensor: Boolean mask indicating consistent patches.
+        """
 
         # cycle consistency (source -> target -> source)
         if len(idx_src2tar.shape) == 2:
@@ -120,9 +184,16 @@ class LocalSimilarity(torch.nn.Module):
         tar_mask,
     ):
         """
-        Find the nearest neighbor in the reference image for each patch in the query image
-        src_feat: (B, C, H, W)  # best template
-        tar_feat: (B, C, H, W) # real image
+        Finds the nearest neighbor in the reference image for each patch in the query image.
+
+        Args:
+            src_feat (torch.Tensor): Source features tensor.
+            tar_feat (torch.Tensor): Target features tensor.
+            src_mask (torch.Tensor): Source mask tensor.
+            tar_mask (torch.Tensor): Target mask tensor.
+
+        Returns:
+            tc.PandasTensorCollection: Collection of matching results.
         """
         B, C, h, w = src_feat.shape
         feat_size = (self.num_patches, self.num_patches)
@@ -194,9 +265,19 @@ class LocalSimilarity(torch.nn.Module):
         max_batch_size=None,
     ):
         """
-        Find the nearest neighbor in the reference image for each patch in the query image
-        src_feat: (B, N, C, H, W)  # template
-        tar_feat: (B, C, H, W) # real image
+        Finds the nearest neighbor in the reference image for each patch in the query image during testing.
+
+        This method processes multiple source features and masks against a single target feature and mask.
+
+        Args:
+            src_feats (torch.Tensor): Source features tensor (B, N, C, H, W).
+            tar_feat (torch.Tensor): Target feature tensor (B, C, H, W).
+            src_masks (torch.Tensor): Source masks tensor.
+            tar_mask (torch.Tensor): Target mask tensor.
+            max_batch_size (int, optional): Maximum batch size for processing. Defaults to None.
+
+        Returns:
+            tc.PandasTensorCollection: Collection of matching results.
         """
         if max_batch_size is None:
             max_batch_size = self.max_batch_size

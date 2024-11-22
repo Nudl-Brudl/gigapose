@@ -11,8 +11,16 @@ import os
 import argparse
 from src.utils.trimesh import get_obj_diameter
 from bop_toolkit_lib import inout
+from os.path import join
 
 if __name__ == "__main__":
+    print("########################################")
+    print("########################################")
+    print("########################################")
+    print("IN THE CALL PANDA 3D")
+    print("########################################")
+    print("########################################")
+    print("########################################")
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("cad_path", nargs="?", help="Path to the model file")
@@ -23,7 +31,7 @@ if __name__ == "__main__":
     parser.add_argument("gpus_devices", nargs="?", help="GPU devices")
     parser.add_argument("disable_output", nargs="?", help="Disable output of blender")
     parser.add_argument(
-        "scale_translation", nargs="?", help="scale translation to meter"
+        "scale_translation", nargs="?", help="scale translation"
     )
     args = parser.parse_args()
 
@@ -31,12 +39,16 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpus_devices)
     os.environ["EGL_VISIBLE_DEVICES"] = str(args.gpus_devices)
 
+    if args.scale_translation == "None" or args.scale_translation == "none":
+        args.scale_translation = None
+
     label = 0
     is_shapeNet = "shapenet" in args.cad_path
     mesh_units = get_obj_diameter(args.cad_path) if not is_shapeNet else 1.0
     mesh_units = "m" if (mesh_units < 10 or is_shapeNet) else "mm"
 
-    object = RigidObject(label=label, mesh_path=args.cad_path, mesh_units=mesh_units)
+    mesh_path_modif = join(os.getcwd(),args.cad_path)
+    object = RigidObject(label=label, mesh_path=mesh_path_modif, mesh_units=mesh_units)
     rigid_object_dataset = RigidObjectDataset([object])
 
     # define camera
@@ -60,8 +72,11 @@ if __name__ == "__main__":
 
     # load object poses
     object_poses = np.load(args.obj_pose)
-    if mesh_units == "m" or args.scale_translation == "true":
+    if mesh_units == "m": #or args.scale_translation == "true":
         object_poses[:, :3, 3] /= 1000.0
+    
+    if args.scale_translation != None:
+        object_poses[:, :3, 3] *= float(args.scale_translation)
 
     for idx_view in range(len(object_poses)):
         TWO = Transform(object_poses[idx_view])

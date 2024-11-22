@@ -71,7 +71,20 @@ def transform_to_list(T: Transform) -> ListPose:
 
 @dataclass
 class ObjectData:
+    '''
+    Class that contains the data of an object
+    
+    Attributes:
+        label (???): type of the object
+        TWO (???): Homogeneous transformation from object to world frame
+        unique_id (???): unique id, identifying the object
+        bbox_amodal (???): amodal bounding box
+        bboc_modal (???): modal bounding box
+        visib_fract(???):
+        TWO_init (???): Initial Transform
+    '''    
     # NOTE (Yann): bbox_amodal, bbox_modal, visib_fract should be moved to SceneObservation
+    
     label: str
     TWO: Optional[Transform] = None
     unique_id: Optional[int] = None
@@ -83,7 +96,13 @@ class ObjectData:
     ] = None  # Some pose estimation datasets (ModelNet) provide an initial pose estimate
     #  NOTE: This should be loaded externally
 
+
     def to_json(self) -> Dict[str, SingleDataJsonType]:
+        '''
+        Converts the instance of the ObjectData into json file
+
+        All attributes of the instance are put into a dictionary
+        '''
         d: Dict[str, SingleDataJsonType] = dict(label=self.label)
         for k in ("TWO", "TWO_init"):
             if getattr(self, k) is not None:
@@ -98,6 +117,10 @@ class ObjectData:
 
     @staticmethod
     def from_json(d: DataJsonType) -> "ObjectData":
+        '''
+        Convert the dictionary of a json file into ObjectData instance
+        '''
+
         assert isinstance(d, dict)
         label = d["label"]
         assert isinstance(label, str)
@@ -126,6 +149,17 @@ class ObjectData:
 
 @dataclass
 class CameraData:
+    '''
+    Defines a class for camera data
+    
+    Attributes:
+        K: calibration matrix
+        resolution
+        TWC: SE3 transformation from camera to world frame
+        camera_id
+        TWC_init: initial transformation
+    '''
+
     K: Optional[np.ndarray] = None
     resolution: Optional[Resolution] = None
     TWC: Optional[Transform] = None
@@ -180,6 +214,19 @@ class CameraData:
 
 @dataclass
 class ObservationInfos:
+    '''
+    Class encapsulating information about observation
+    
+    Each observation is stored in a folder named after its scene id.
+    Each scene might be taken from different views or under different
+    lightings. These images are named after their view id
+
+
+    Attributes:
+        scene_id
+        view_id
+    '''
+
     scene_id: str
     view_id: str
 
@@ -196,6 +243,21 @@ class ObservationInfos:
 
 @dataclass
 class SceneObservation:
+    '''
+    Encapsulates the data of a scene (rgb, depth, segm, ...)
+
+    Attributes:
+        rgb (np.ndarray): rgb image of the scene
+        depth (np.ndarray): depth information of the scene
+        segmentation (np.ndarray): array where each pixel of an object has unique
+            object id
+        infos (ObservationInfos): contains scene_id and view_id
+        object_datas: a list of the informations of objects in the scene
+            (label, TWO, unique_id, bb...)
+        camera_data: camera info
+        binary_masks: dict mapping unique id to (h, w) np.bool
+    '''
+    
     rgb: Optional[np.ndarray] = None  # (h,w,3) uint8 numpy array
     depth: Optional[np.ndarray] = None  # (h, w), np.float32
     segmentation: Optional[np.ndarray] = None  # (h, w), np.uint32 (important);
@@ -306,7 +368,10 @@ class SceneObservation:
         self,
         object_labels: Optional[List[str]] = None,
     ) -> SceneObservationTensorCollection:
-        """Convert SceneData to a PandasTensorCollection representation."""
+        """
+        Convert SceneData to a PandasTensorCollection representation.
+        """
+
         obs = self
 
         assert obs.camera_data is not None
@@ -387,23 +452,27 @@ class SceneObservation:
 
 
 class SceneDataset(torch.utils.data.Dataset):
+    """
+    Scene dataset containing SceneObservations.
+    Can be an IterableDataset or a map-style Dataset.
+    
+    These methods are not implemented:
+        _load_scene_observation
+        __iter__
+
+    Attributes:
+        frame_index (pd.DataFrame): Must contain the following columns: scene_id, view_id
+        load_depth (bool, optional): Whether to load depth images. Defaults to False.
+        load_segmentation (bool, optional): Whether to load image segmentation.
+            Defaults to True.
+    """
+
     def __init__(
         self,
         frame_index: Optional[pd.DataFrame],
         load_depth: bool = False,
         load_segmentation: bool = True,
     ):
-        """Scene dataset.
-        Can be an IterableDataset or a map-style Dataset.
-
-        Args:
-            frame_index (pd.DataFrame): Must contain the following columns: scene_id, view_id
-            load_depth (bool, optional): Whether to load depth images. Defaults to False.
-            load_segmentation (bool, optional): Whether to load image segmentation.
-            Defaults to True.
-            Defaults to f'{label}'.
-        """
-
         self.frame_index = frame_index
         self.load_depth = load_depth
         self.load_segmentation = load_segmentation
@@ -428,6 +497,13 @@ class SceneDataset(torch.utils.data.Dataset):
 
 
 class IterableSceneDataset:
+    '''
+    An infinite iterator over SceneObservation samples.
+
+    These methods are not implemented:
+        __iter__
+    '''
+
     def __iter__(self) -> Iterator[SceneObservation]:
         """Returns an infinite iterator over SceneObservation samples."""
         raise NotImplementedError

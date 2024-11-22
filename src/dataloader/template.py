@@ -79,6 +79,59 @@ class TemplateSet(Dataset):
             infos=pd.DataFrame(),
         )
         return out_data
+    
+
+
+class MyTemplateSet(Dataset):
+    def __init__(
+        self,
+        root_dir,
+        dataset_name,
+        template_dataset,
+        template_config,
+        transforms,
+        **kwargs,
+    ):
+        self.root_dir = Path(root_dir)
+        self.dataset_name = dataset_name
+        self.transforms = transforms
+
+        self.template_dataset = template_dataset
+        self.template_finder = NearestTemplateFinder(template_config)
+        self.model_infos = [{"obj_id": int(obj_id)} 
+                            for obj_id in template_dataset.label_to_objects.keys()]
+
+
+    def __len__(self):
+        return len(self.model_infos)
+
+    def __getitem__(self, index):
+        # loading templates
+        if "lmo" in self.dataset_name:
+                label = LMO_index_to_ID[index]
+        else:
+            label = f"{index+1}"
+
+        # load template data
+        template_data = self.template_dataset.get_object_templates(label)
+        data, poses = template_data.read_test_mode()
+
+        # crop the template
+        cropped_data = self.transforms.crop_transform(data["box"], images=data["rgba"])
+        cropped_data["images"][:, :3] = self.transforms.normalize(
+            cropped_data["images"][:, :3]
+        )
+        data["K"] = torch.from_numpy(self.template_dataset.K).float()
+
+        out_data = tc.PandasTensorCollection(
+            K=data["K"],
+            rgb=cropped_data["images"][:, :3],
+            mask=cropped_data["images"][:, -1],
+            M=cropped_data["M"],
+            poses=poses,
+            infos=pd.DataFrame(),
+        )
+        return out_data
 
 
 if __name__ == "__main__":

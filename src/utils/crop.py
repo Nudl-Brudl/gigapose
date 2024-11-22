@@ -14,6 +14,13 @@ class CropResizePad:
         self.patch_size = patch_size
 
     def __call__(self, xyxy_boxes, images):
+        '''
+        Crops and resizes the images to target size
+
+        Args:
+            xyxy_boxes (np.darray): array indicating the limits of the bounding box [x1, y1, x2, y2]
+            images (np.darray): the images in the format 
+        '''
         batch_size = xyxy_boxes.shape[0]
         device = xyxy_boxes.device
         bbox_sizes = BoundingBox(xyxy_boxes).get_box_size()
