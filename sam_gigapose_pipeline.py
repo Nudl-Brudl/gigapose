@@ -19,10 +19,15 @@ from hydra.utils import instantiate
 import json
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
+from PIL import Image, ImageTk
 import subprocess
+import tkinter as tk
+import torch
 from torch.utils.data import DataLoader
 import trimesh
 import warnings
+
+from segment_anything import SamPredictor, sam_model_registry
 
 from my_image_capture import capture_scene
 from my_rendering import call_renderer
@@ -35,14 +40,9 @@ from src.utils.logging import get_logger
 from src.custom_megapose.template_dataset import TemplateData, TemplateDataset
 from src.custom_megapose.transform import ScaleTransform
 from src.dataloader.template import MyTemplateSet
-
 from src.utils.my_visualization import draw_xyz_axis, draw_posed_3d_box
+from segment_interface import SegmentInterface
 
-
-
-default_model = """%YAML:1.2
-model_path: \"INFER_FROM_NAME\"
-sphere_radius: 0.5"""
 
 
 default_body = """%YAML:1.2
@@ -127,6 +127,7 @@ if __name__ == "__main__":
     DO_STOIBER = False
 
     num_obj = sum(num_obj_list)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
             
     
     ########################## Paths and Preliminaries ###########################
@@ -154,7 +155,8 @@ if __name__ == "__main__":
                          for id_str in obj_id_list_str]
 
     templates_poses_dir = os.path.join(templates_dir, "object_poses")
-    templates_default_poses_path = os.path.join(templates_poses_dir, "default_poses.npy")
+    templates_default_poses_path = os.path.join(templates_poses_dir, 
+                                                "default_poses.npy")
     templates_poses_path_list = [os.path.join(templates_poses_dir, id_str + ".npy") 
                                  for id_str in obj_id_list_str]
 
@@ -162,11 +164,16 @@ if __name__ == "__main__":
     templates_cad_path_list = [os.path.join(templates_models_dir, id_str + cad_type) 
                                for id_str in obj_id_list_str]
     
-    # XMem paths
-    xmem_workspace = os.path.join(root_dir, "workspace")
-    xmem_path = os.path.join(root_dir, 
-                             "XMem", 
-                             "interactive_demo.py")
+    # SAM paths and config
+    sam_checkpt_path = os.path.join(root_dir, 
+                                    os.pardir, 
+                                    "checkpoints", 
+                                    "sam_vit_h_4b8939.pth")
+    sam_model_type = "vit_h"
+    sam = sam_model_registry[sam_model_type](checkpoint=sam_checkpt_path)
+    sam.to(device=device)
+    predictor = SamPredictor(sam)
+    
     
 
     # Scene data
@@ -183,28 +190,28 @@ if __name__ == "__main__":
     with open(os.path.join(desired_dataset_dir, "name_to_id.json"), 'r') as file:
         name_to_id_dict = json.load(file)
 
-    ################################## Rendering #################################
-    logger.info("Check if Objects need to be rendered...")
-    for idx, obj_id in enumerate(obj_id_list):
+    # ################################## Rendering #################################
+    # logger.info("Check if Objects need to be rendered...")
+    # for idx, obj_id in enumerate(obj_id_list):
 
-        template_cad_path = templates_cad_path_list[idx]
-        template_dir = template_dir_list[idx]
-        obj_name = get_key_from_value(name_to_id_dict, obj_id)
-        render_scale = render_scale_list[idx]
+    #     template_cad_path = templates_cad_path_list[idx]
+    #     template_dir = template_dir_list[idx]
+    #     obj_name = get_key_from_value(name_to_id_dict, obj_id)
+    #     render_scale = render_scale_list[idx]
 
-        if True:#(not os.path.exists(template_dir) or
-            #len(os.listdir(template_dir)) != NUM_TEMPLATES*2):
-            obj_poses = np.load(templates_default_poses_path)
-            obj_poses[:, :3, 3] *= render_scale
-            np.save(templates_poses_path_list[idx], obj_poses)
+    #     if True:#(not os.path.exists(template_dir) or
+    #         #len(os.listdir(template_dir)) != NUM_TEMPLATES*2):
+    #         obj_poses = np.load(templates_default_poses_path)
+    #         obj_poses[:, :3, 3] *= render_scale
+    #         np.save(templates_poses_path_list[idx], obj_poses)
 
-            logger.info(f"Rendering {obj_name}...")
-            call_renderer(template_cad_path, 
-                          templates_poses_path_list[idx], 
-                          template_dir, 
-                          render_scale)
-            logger.info(f"{obj_name} has been rendered.")
-    logger.info("All object renderings exist.")                    
+    #         logger.info(f"Rendering {obj_name}...")
+    #         call_renderer(template_cad_path, 
+    #                       templates_poses_path_list[idx], 
+    #                       template_dir, 
+    #                       render_scale)
+    #         logger.info(f"{obj_name} has been rendered.")
+    # logger.info("All object renderings exist.")                    
 
     ################################# Intrinsics #################################
     if USE_CAMERA:
@@ -217,27 +224,10 @@ if __name__ == "__main__":
 
     ################################ Segmentation ################################
     if DO_SEGMENTATION:
-        if os.path.exists(xmem_workspace):
-            shutil.rmtree(xmem_workspace)
-        else:
-            os.makedirs(xmem_workspace, exist_ok=True)
-        
-        print("Is deleted")
-        xmem_args = [
-            "python3", 
-            xmem_path, 
-            "--images", img_dir,
-            "--num_objects", str(num_obj),
-            "--size", "-1",
-            "--workspace", xmem_workspace
-            ]
+        seg_interface = SegmentInterface(sam_checkpt_path, device, img_data_path)
+        seg_interface.run()
 
-        try:
-            result = subprocess.run(xmem_args, check=True, 
-                                    capture_output=True, text=True)
-            print(f"XMem script output:\n{result.stdout}")
-        except subprocess.CalledProcessError as e:
-            print(f"Error occurred while running XMem script:\n{e.stderr}")
+
 
     ################################## GigaPose ##################################
     with initialize(version_base=None, config_path="my_configs"):

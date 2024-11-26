@@ -1,6 +1,7 @@
 '''
 
 '''
+import sys
 import subprocess
 
 import glob
@@ -12,6 +13,8 @@ import os
 from PIL import Image
 import torch
 import warnings
+import sys
+sys.path.append("../")
 
 from src.utils.logging import get_logger
 
@@ -67,12 +70,18 @@ def call_renderer(cad_path, obj_pose_path, output_dir,
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     if blenderproc:
-        command = f"blenderproc run ./src/lib3d/blenderproc.py {cad_path} {obj_pose_path} {output_dir} {0}"
+        blender_proc_path = os.path.join(root_dir, "src","lib3d", "blenderproc.py")
+        #command = f"blenderproc run ./src/lib3d/blenderproc.py {cad_path} {obj_pose_path} {output_dir} {0}"
+        command = f"blenderproc run {blender_proc_path} {cad_path} {obj_pose_path} {output_dir} {0}"
         os.system(command)
     else:
+        current_wd = os.getcwd()
         # command = f"python3 -m src.custom_megapose.call_panda3d {cad_path} {obj_pose_path} {output_dir} {0}"
         #panda3d_path = os.path.join(root_dir, "src", "custom_megapose", "call_panda3d.py")
-        panda3d_path = "src.custom_megapose.call_panda3d"
+        #panda3d_path = "src.custom_megapose.call_panda3d"
+        panda3d_dir = os.path.join(root_dir, "src","custom_megapose")
+        os.chdir(panda3d_dir)
+        panda3d_path = "call_panda3d"
         panda3d_args = ["python3",
                         "-m",
                         panda3d_path,
@@ -84,8 +93,12 @@ def call_renderer(cad_path, obj_pose_path, output_dir,
                         str(scale_translation)
                         ]
         try:
-            result = subprocess.run(panda3d_args, 
-                                    check=True, capture_output=True, text=True)
+            # result = subprocess.run(panda3d_args, 
+            #                         check=True, capture_output=True, text=True)
+
+            command = f"python3 -m {panda3d_path} {cad_path} {obj_pose_path} {output_dir} 0 False {str(scale_translation)}"
+            os.system(command)
+            os.chdir(current_wd)
         except subprocess.CalledProcessError as e:
             print(f"Error occured while running callpanda3d")
 
@@ -94,81 +107,33 @@ def call_renderer(cad_path, obj_pose_path, output_dir,
     if num_images == len(np.load(obj_pose_path)) * 2:
         return True
     else:
-        logger.info(f"Found only {num_images} images for  {cad_path} {obj_pose_path}")
+        logger.info(f"Found only {num_images} images for  {cad_path} {obj_pose_path} {output_dir}")
         return False
     
 
 
 if __name__ == '__main__':
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-    root_dir = os.path.abspath(os.path.dirname(__file__))
-    pose_path = os.path.join('src', 'lib3d', 'predefined_poses', 'obj_poses_level1.npy')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+    obj_id = 4
+    obj_id_str = str(obj_id).zfill(6)
 
 
-    if False:
-        
-        cad_path = os.path.join(os.path.dirname(__file__), os.pardir, 'Koenig_Johannes', 
-                                'LabSetup', 'LegoBlock.stl')
-        poses = np.load(pose_path)
-        
-        output_dir = os.path.join(root_dir, "gigaPose_datasets", "datasets", "templates", 
-                                  "custom_hope", "000002")
-        #output_dir = os.path.join(os.path.dirname(__file__), os.pardir, 'Koenig_Johannes', 
-        #                        'LabSetup', 'renderings')
-        
 
-        # Update poses to zoom in
-        poses[:, :3, 3] /= 3    
-        pose_path = os.path.join(os.path.dirname(__file__), os.pardir, 'Koenig_Johannes', 
-                                'LabSetup', 'poses.npy')
-        np.save(pose_path, poses)
-    elif False:
-        cad_path = os.path.join(root_dir, "gigaPose_datasets", "datasets", "hope", 
-                                "models", "obj_000002.ply")
+    root_dir = os.path.abspath(os.path.dirname(__file__))    
+    datasets_dir = os.path.join(root_dir, "gigaPose_datasets", "datasets")
+    cad_path = os.path.join(datasets_dir, "custom", "models", f"{obj_id_str}.obj")
 
-        output_dir = os.path.join(root_dir, "gigaPose_datasets", "datasets", 
-                                  "templates", "custom_hope", "000002")
+    output_dir = os.path.join(datasets_dir, "templates", "custom", obj_id_str)
 
-        poses = np.load(pose_path)
-        poses[:, :3, 3] *= 0.4    
-        pose_path = os.path.join(os.path.dirname(__file__), os.pardir, 'Koenig_Johannes', 
-                                'LabSetup', 'hope_poses.npy')
-        np.save(pose_path, poses)
-
-    elif True:
-        cad_path = os.path.join(root_dir, "my_renderings",  "LegoBlock.obj")
-
-        output_dir = os.path.join(root_dir, "my_renderings",  "000001_new")
-
-        pose1 = np.eye(4)
-        pose2 = np.eye(4)
-        pose3 = np.eye(4)
-        pose4 = np.eye(4)
-        pose_rot_y_90 = get_rot_matrix(1, np.pi/2)
-        pose_rot_y_390 = get_rot_matrix(1, 3*np.pi/2)
-
-        pose1[2, 3] = 300
-
-        pose2[2, 3] = 300
-        pose2[0, 3] = 30
-
-        pose3[2, 3] = 300
-        pose3[1, 3] = 30
-
-        pose4[2, 3] = 600
-
-        pose_rot_y_90[2, 3] = 300
-        pose_rot_y_390[2, 3] = 300
-
-        poses = np.array([pose1, pose2, pose3, pose_rot_y_90, pose_rot_y_390])
-
-        pose_path = os.path.join(root_dir, "my_renderings", 'my_poses.npy')
-        np.save(pose_path, poses)
-
-    print("Exists:")
-    print(f"CAD: {os.path.exists(cad_path)}")
-    print(f"Pose: {os.path.exists(pose_path)}")
-    ret = call_renderer(cad_path, pose_path, output_dir, blenderproc=True)
+    pose_path = os.path.join(datasets_dir, 
+                             "templates", 
+                             "custom",
+                             'object_poses', 
+                             f"{obj_id_str}.npy")
+    sys.path.append(root_dir)
+    print(f"Rootdir = {root_dir}")
+    ret = call_renderer(cad_path, pose_path, output_dir, blenderproc=False)
         
 
 

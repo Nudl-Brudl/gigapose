@@ -1,1 +1,0 @@
-print("Alex hat Okotopussy")
