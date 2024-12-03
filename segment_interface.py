@@ -10,7 +10,7 @@ from segment_anything import SamPredictor, sam_model_registry
 
 class SegmentInterface:
   
-    def __init__(self, sam_checkpoint_path, device, image_path):
+    def __init__(self, sam_checkpoint_path, device, image_path, mask_path):
         
         # Do SAM Stuff
         self.sam_checkpoint_path = sam_checkpoint_path
@@ -20,6 +20,9 @@ class SegmentInterface:
         sam = sam_model_registry[self.model_type](checkpoint=self.sam_checkpoint_path)
         sam.to(device=self.device)
         self.predictor = SamPredictor(sam)
+
+        self.mask_path = mask_path
+        os.makedirs(self.mask_path, exist_ok=True)
 
         # Do Image stuff
         self.img_array_bgr = cv2.imread(image_path)
