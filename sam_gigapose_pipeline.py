@@ -116,13 +116,13 @@ if __name__ == "__main__":
 
 
     ################################# Variables ##################################
-    obj_id_list = [3]
+    obj_id_list = [1]
     num_obj_list = [1]
     render_scale_list = [1]
     dataset_name = "custom"
 
-    USE_CAMERA = True
-    DO_SEGMENTATION = True
+    USE_CAMERA = False
+    DO_SEGMENTATION = False
     SHOW_RESTULTS = True
     DO_STOIBER = False
 
@@ -180,6 +180,8 @@ if __name__ == "__main__":
     camera_data_dir = os.path.join(datasets_dir, dataset_name, "camera_data")
     img_data_path  = os.path.join(camera_data_dir, "scene", "image", "scene.png")
     img_dir = os.path.dirname(img_data_path)
+
+    mask_path = os.path.join(camera_data_dir, "scene", "mask", "scene.png")
     
 
     # Tracker data dir
@@ -224,7 +226,8 @@ if __name__ == "__main__":
 
     ################################ Segmentation ################################
     if DO_SEGMENTATION:
-        seg_interface = SegmentInterface(sam_checkpt_path, device, img_data_path)
+        seg_interface = SegmentInterface(sam_checkpt_path, device, 
+                                         img_data_path, mask_path)
         seg_interface.run()
 
 
@@ -292,8 +295,7 @@ if __name__ == "__main__":
     logger.info("Model initialized!")
 
 
-    rgb_path = os.path.join(xmem_workspace, "images", "scene.png")
-    mask_path = os.path.join(xmem_workspace, "masks", "scene.png")
+    rgb_path = img_data_path
 
     rgb_orig = cv2.imread(rgb_path).astype(np.float32) / 255.
     mask_visib = cv2.imread(mask_path, 
@@ -338,76 +340,79 @@ if __name__ == "__main__":
             for idx_pose in range(poses_est.shape[0]):
                 obj_pose = poses_est[idx_pose]
                 obj_pose_o = obj_pose@np.linalg.inv(to_origin)
+                pose_1 = np.eye(4)
+                pose_1[:3, 3] = obj_pose[:3, 3]
+                pose_1_o = pose_1@np.linalg.inv(to_origin)
 
                 boxed_img = draw_posed_3d_box(camera_params, 
                                               rgb_orig.copy(), 
-                                              obj_pose_o, 
+                                              obj_pose_o, #pose_1_o, #obj_pose_o, 
                                               bbox)
                 boxed_img = draw_xyz_axis(boxed_img, 
-                                          obj_pose, 
+                                          obj_pose, #pose_1, #obj_pose, 
                                           scale=20, 
                                           K=camera_params)
                 cv2.imshow(f"Obj {idx_obj} Pose number {idx_pose+1}", boxed_img/255.)
                 cv2.waitKey(0)
                 cv2.destroyAllWindows()
 
-    ################################## Tracking ##################################
-    delete_all_contents(stoiber_data_dir)
+    # ################################## Tracking ##################################
+    # delete_all_contents(stoiber_data_dir)
 
-    default_body = default_body.replace("INFER_FROM_NAME", template_cad_path)
-    arg_body_base_path = stoiber_data_dir
-    for instance_id in range(num_obj_list[0]):
-        pose_stoiber = prediction_list[instance_id].pred_poses[0, 0].numpy()
-        body_name = f"body_{instance_id}"
+    # default_body = default_body.replace("INFER_FROM_NAME", template_cad_path)
+    # arg_body_base_path = stoiber_data_dir
+    # for instance_id in range(num_obj_list[0]):
+    #     pose_stoiber = prediction_list[instance_id].pred_poses[0, 0].numpy()
+    #     body_name = f"body_{instance_id}"
 
-        body_yaml_path = os.path.join(arg_body_base_path, 
-                                      body_name + ".yaml")
-        detector_yaml_path = os.path.join(arg_body_base_path,
-                                          body_name + "_detector.yaml")
-        region_modality_path = os.path.join(arg_body_base_path,
-                                            body_name + "_region_modality.yaml")
+    #     body_yaml_path = os.path.join(arg_body_base_path, 
+    #                                   body_name + ".yaml")
+    #     detector_yaml_path = os.path.join(arg_body_base_path,
+    #                                       body_name + "_detector.yaml")
+    #     region_modality_path = os.path.join(arg_body_base_path,
+    #                                         body_name + "_region_modality.yaml")
         
-        # Create body files
-        with open(body_yaml_path, 'w') as file:
-            file.write(default_body)
-        # Create detector files
-        with open(detector_yaml_path, 'w') as file:
-            file.write(default_detector)
-        # Create region modality files
-        with open(region_modality_path, 'w') as file:
-            file.write(default_region_modality)
-        update_detector_yaml(detector_yaml_path, pose_stoiber)
+    #     # Create body files
+    #     with open(body_yaml_path, 'w') as file:
+    #         file.write(default_body)
+    #     # Create detector files
+    #     with open(detector_yaml_path, 'w') as file:
+    #         file.write(default_detector)
+    #     # Create region modality files
+    #     with open(region_modality_path, 'w') as file:
+    #         file.write(default_region_modality)
+    #     update_detector_yaml(detector_yaml_path, pose_stoiber)
     
-    ############################## Stoiber Arguments ##############################
-    if DO_STOIBER:
-        arg_obj_id = str(obj_id_list[0])
-        arg_num_obj = str(num_obj_list[0])
-        arg_body_base_path = stoiber_data_dir
+    # ############################## Stoiber Arguments ##############################
+    # if DO_STOIBER:
+    #     arg_obj_id = str(obj_id_list[0])
+    #     arg_num_obj = str(num_obj_list[0])
+    #     arg_body_base_path = stoiber_data_dir
         
 
-        path_stoiber = os.path.join(root_dir, "M3T")
-        path_executables = os.path.join(path_stoiber, 
-                                        "build_debug", 
-                                        "examples")
-        path_rs_rgb = os.path.join(path_executables, "my_tracker_rs_rgb")
+    #     path_stoiber = os.path.join(root_dir, "M3T")
+    #     path_executables = os.path.join(path_stoiber, 
+    #                                     "build_debug", 
+    #                                     "examples")
+    #     path_rs_rgb = os.path.join(path_executables, "my_tracker_rs_rgb")
 
-        stoiber_args = [
-            path_rs_rgb,
-            arg_obj_id,
-            arg_num_obj,
-            arg_body_base_path
-        ]
+    #     stoiber_args = [
+    #         path_rs_rgb,
+    #         arg_obj_id,
+    #         arg_num_obj,
+    #         arg_body_base_path
+    #     ]
 
-        try:
-            result = subprocess.run(stoiber_args, check=True, 
-                                    capture_output=True, text=True)
-            print(f"Stoiber Output:\n{result.stdout}")
-        except subprocess.CalledProcessError as e:
-            print(f"Error occurred while running Stoiber script:\n{e.stderr}")
+    #     try:
+    #         result = subprocess.run(stoiber_args, check=True, 
+    #                                 capture_output=True, text=True)
+    #         print(f"Stoiber Output:\n{result.stdout}")
+    #     except subprocess.CalledProcessError as e:
+    #         print(f"Error occurred while running Stoiber script:\n{e.stderr}")
 
-        print("End")
+    #     print("End")
 
-    print("The End")
+    # print("The End")
 
     '''
     cd /home/my_gigapose/M3T/build_debug/examples
