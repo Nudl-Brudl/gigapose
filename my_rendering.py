@@ -115,9 +115,11 @@ def call_renderer(cad_path, obj_pose_path, output_dir,
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-    obj_id = 4
-    obj_id_str = str(obj_id).zfill(6)
+    obj_id = 5
+    scale_translation = None
 
+    scale_translation = str(scale_translation)
+    obj_id_str = str(obj_id).zfill(6)
 
 
     root_dir = os.path.abspath(os.path.dirname(__file__))    
@@ -126,14 +128,21 @@ if __name__ == '__main__':
 
     output_dir = os.path.join(datasets_dir, "templates", "custom", obj_id_str)
 
-    pose_path = os.path.join(datasets_dir, 
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    obj_pose_path = os.path.join(datasets_dir, 
                              "templates", 
                              "custom",
-                             'object_poses', 
-                             f"{obj_id_str}.npy")
-    sys.path.append(root_dir)
-    print(f"Rootdir = {root_dir}")
-    ret = call_renderer(cad_path, pose_path, output_dir, blenderproc=False)
+                             "object_poses", 
+                             "default_poses.npy" #f"{obj_id_str}.npy",
+                             )
+    
+    callpanda_path = os.path.join(root_dir, "my_call_panda3d.py")
+
+    command = f"python3 {callpanda_path} {cad_path} {obj_pose_path} {output_dir} 0 False {str(scale_translation)}"
+
+    os.system(command)
         
 
 
