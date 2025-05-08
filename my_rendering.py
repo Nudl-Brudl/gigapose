@@ -39,6 +39,16 @@ if __name__ == '__main__':
                              "default_poses.npy" #f"{obj_id_str}.npy",
                              )
     
+    obj_pose_path_id = os.path.join(datasets_dir, 
+                             "templates", 
+                             "custom",
+                             "object_poses", 
+                             f"{obj_id_str}.npy",
+                             )
+    
+    data = np.load(obj_pose_path)
+    np.save(obj_pose_path_id, data)
+    
     callpanda_path = os.path.join(root_dir, "my_call_panda3d.py")
 
     command = f"python3 {callpanda_path} {cad_path} {obj_pose_path} {output_dir} 0 False {str(scale_translation)}"
